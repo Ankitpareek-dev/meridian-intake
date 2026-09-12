@@ -75,7 +75,7 @@ def test_transcript_3_audit_vs_cfo(db_session):
     assert any("budget" in f.lower() or "conflict" in f.lower() or "ambiguity" in f.lower() or "service" in f.lower() for f in res.flag_reasons)
 
 def test_transcript_4_estate_deadline(db_session):
-    """Test Deceased parent estate tax statutory deadline."""
+    """Test Deceased parent estate tax with missing contact info."""
     samples = get_sample_transcripts()
     t4 = samples[3]["transcript"]
 
@@ -84,5 +84,18 @@ def test_transcript_4_estate_deadline(db_session):
 
     assert res.matched_services[0].service_id == "retirement_estate_planning"
     assert res.urgency == "HIGH"
-    assert res.is_flagged_for_review is True
-    assert any("deadline" in f.lower() or "urgency" in f.lower() or "estate" in f.lower() for f in res.flag_reasons)
+    assert res.is_flagged_for_review is True  # Flagged because caller omitted name & contact info
+    assert any("contact" in f.lower() or "name" in f.lower() for f in res.flag_reasons)
+
+def test_clean_high_urgency_intake(db_session):
+    """Test Robert Hayes complete high-urgency intake passes without review flag."""
+    t = "Good morning, this is Robert Hayes calling at 512-555-8841. My father passed away recently and I am the executor of his estate. The probate attorney informed us that the federal estate tax filing deadline is in 10 days. We need immediate estate tax and inheritance advisory before the cutoff."
+    req = IntakeProcessRequest(transcript=t)
+    res = process_intake(req, db_session)
+
+    assert res.client_name == "Robert Hayes"
+    assert res.contact_info.phone is not None
+    assert res.matched_services[0].service_id == "retirement_estate_planning"
+    assert res.urgency == "HIGH"
+    assert res.is_flagged_for_review is False  # Clean complete data is NOT flagged
+    assert res.confidence_score >= 0.85

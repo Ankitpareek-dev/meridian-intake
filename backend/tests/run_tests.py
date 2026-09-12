@@ -74,11 +74,77 @@ def run_all_tests():
         elif i == 4:
             assert res.matched_services[0].service_id == "retirement_estate_planning", "Test 4 failed: Service mismatch"
             assert res.urgency == "HIGH", "Test 4 failed: Estate deadline should be HIGH urgency"
-            assert res.is_flagged_for_review is True, "Test 4 failed: High urgency estate should be flagged"
+            assert res.is_flagged_for_review is True, "Test 4 failed: Sample 4 missing contact info should be flagged"
             passed += 1
 
-    print("=================================================================")
-    print(f"RESULTS: {passed}/{total} tests PASSED successfully!")
+    # --- Test 5: Clean High-Urgency Complete Intake (Robert Hayes) ---
+    print("\n--- TEST 5: Clean High-Urgency Intake (Robert Hayes) ---")
+    t_clean = "Good morning, this is Robert Hayes calling at 512-555-8841. My father passed away recently and I am the executor of his estate. The probate attorney informed us that the federal estate tax filing deadline is in 10 days. We need immediate estate tax and inheritance advisory before the cutoff."
+    req = IntakeProcessRequest(transcript=t_clean)
+    res_clean = process_intake(req, db)
+    assert res_clean.client_name == "Robert Hayes"
+    assert res_clean.contact_info.phone is not None
+    assert res_clean.urgency == "HIGH"
+    assert res_clean.is_flagged_for_review is False, "Clean high-urgency intake should NOT be flagged for review"
+    assert res_clean.confidence_score >= 0.85
+    print("  ✓ Clean high-urgency intake passed without review flag (Awaiting Confirmation / Ready for approval)")
+    passed += 1
+    total += 1
+
+    # --- Validation Tests ---
+    print("\n--- TEST 5: Input Validation & Guardrails ---")
+    from backend.services.validation import validate_transcript_input
+    from fastapi import HTTPException
+
+    # Test Empty
+    try:
+        validate_transcript_input("   ")
+        assert False, "Should have raised 400 for empty transcript"
+    except HTTPException as e:
+        assert e.status_code == 400
+        print("  ✓ Correctly rejected empty whitespace (400 Bad Request)")
+
+    # Test Too Short (< 15 chars)
+    try:
+        validate_transcript_input("Hello there")
+        assert False, "Should have raised 422 for short transcript"
+    except HTTPException as e:
+        assert e.status_code == 422
+        print("  ✓ Correctly rejected short transcript (422 Unprocessable Entity)")
+
+    # Test Purely Numeric
+    try:
+        validate_transcript_input("1234567890 987654321 0000")
+        assert False, "Should have raised 422 for numeric noise"
+    except HTTPException as e:
+        assert e.status_code == 422
+        print("  ✓ Correctly rejected numeric noise (422 Unprocessable Entity)")
+
+    # Test Pure Symbols
+    try:
+        validate_transcript_input("??? !!! ??? !!! $$$ ###")
+        assert False, "Should have raised 422 for punctuation noise"
+    except HTTPException as e:
+        assert e.status_code == 422
+        print("  ✓ Correctly rejected punctuation/symbols noise (422 Unprocessable Entity)")
+
+    # Test Repetitive Gibberish
+    try:
+        validate_transcript_input("aaaaa aaaaa aaaaa aaaaa")
+        assert False, "Should have raised 422 for repetitive gibberish"
+    except HTTPException as e:
+        assert e.status_code == 422
+        print("  ✓ Correctly rejected repetitive character noise (422 Unprocessable Entity)")
+
+    # Test Valid Input
+    valid = validate_transcript_input("Hi, my name is Marcus Vance. We need tax filing support for our LLC.")
+    assert valid is not None
+    print("  ✓ Correctly accepted valid natural language transcript")
+    passed += 1
+    total += 1
+
+    print("\n=================================================================")
+    print(f"RESULTS: {passed}/{total} test suites PASSED successfully!")
     print("=================================================================")
 
 if __name__ == "__main__":

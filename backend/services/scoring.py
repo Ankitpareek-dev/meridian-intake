@@ -69,28 +69,17 @@ def calculate_confidence_and_flags(
         flag_reasons.append("Client expressed budget sensitivity against potentially high-touch services")
         reasons_breakdown.append("-8% for budget constraint")
 
-    # 5. Statutory Tax Deadline / High Urgency Check
-    deadline_alert = extracted_data.get("deadline_alert", None)
-    if deadline_alert:
-        flag_reasons.append(f"Statutory Deadline Alert: {deadline_alert}")
-        reasons_breakdown.append("Statutory deadline risk")
-    elif extracted_data.get("urgency") == "HIGH":
-        flag_reasons.append(f"High Urgency / Deadline: {extracted_data.get('urgency_rationale', 'Urgent statutory filing timeline')}")
-        reasons_breakdown.append("High urgency review requirement")
-
     # Calculate Final Score (Clamped between 0.20 and 0.98)
     final_score = round(max(0.20, min(0.98, base_score - deductions)), 3)
 
-    # 6. Flag for Review Determination
-    # Review is needed when confidence is low (< 0.75) or when there are data defects / ambiguities / deadlines
+    # 5. Flag for Review Determination
+    # Review is needed ONLY when confidence is low (< 0.75) or when there are data defects / ambiguities
     has_defects_or_ambiguities = bool(
         (not has_phone and not has_email) or
         not has_name or
         has_conflicting_intent or
         (margin < 0.02 and s1 < 0.65) or
-        has_budget_constraint or
-        deadline_alert or
-        extracted_data.get("urgency") == "HIGH"
+        has_budget_constraint
     )
 
     is_flagged = (final_score < 0.75) or has_defects_or_ambiguities

@@ -25,6 +25,7 @@ from backend.services.extractor import extract_structured_intake
 from backend.services.scoring import calculate_confidence_and_flags
 from backend.services.transcriber import transcribe_audio_bytes
 from backend.services.seed_data import get_sample_transcripts
+from backend.services.validation import validate_transcript_input
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -89,9 +90,7 @@ def process_intake(payload: IntakeProcessRequest, db: Session = Depends(get_db))
     Executes semantic vector retrieval against the service catalog, LLM extraction,
     and deterministic confidence scoring.
     """
-    transcript = payload.transcript.strip()
-    if not transcript or len(transcript) < 3:
-        raise HTTPException(status_code=400, detail="Transcript cannot be empty or fewer than 3 characters.")
+    transcript = validate_transcript_input(payload.transcript)
 
     # 1. Semantic Vector Retrieval Step (Queries pgvector in PostgreSQL)
     retrieved_services = retrieve_matching_services(transcript, top_k=4, db=db)
