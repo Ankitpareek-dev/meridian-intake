@@ -1,36 +1,39 @@
 # Written Reflection: Meridian Tax & Advisory Intake System
 
-### 1. Main Architecture Decisions & Trade-Offs
-Given the time constraints and the scope of the assessment, we made three deliberate architectural choices:
-- **Decoupled Semantic Retrieval & Structured Extraction**: Rather than dumping the entire catalog into an LLM prompt or using hardcoded keyword regexes, we built a 2-stage retrieval pipeline. Dense vector embeddings (using Google Gemini `text-embedding-004` with a deterministic local fallback) compute cosine similarity across the 8 service lines, providing mathematical grounding. The structured LLM then disambiguates nuanced edge cases.
-- **Relational Schema with Optimized Composite Indexes**: We structured PostgreSQL with a normalized join table (`intake_service_matches`) rather than an unstructured JSON blob. This allowed us to add high-performance B-tree indexes directly targeting the two core query patterns: `idx_intakes_flagged_created` on `(is_flagged_for_review, created_at DESC)` and `idx_intake_service_matches_service_id` on `(service_id, intake_id)`.
-- **Deterministic, Transparent Confidence Scoring**: Instead of letting the LLM hallucinate an arbitrary "vibe" confidence number, our backend calculates confidence mathematically: starting from the top vector similarity score and deducting explicit, auditable penalty points for missing phone/email, omitted names, narrow service margins, and conflicting client intents.
+### **1. Architecture Decisions & Trade-offs**
+* **Frontend**: Built with **React 18 and Tailwind CSS** for a responsive two-column triage interface (inquiry queue on the left, side-by-side raw transcript and structured details on the right) with audio player preview and real-time filtering by status tab, service, and urgency.
+* **Backend**: Built with **FastAPI (Python)** to provide clean, validated REST endpoints with asynchronous request handling and Pydantic schema validation.
+* **Database & Vector Search**: Used **PostgreSQL with `pgvector`** to store relational data (`intakes`, `services`, `intake_service_matches`) and execute SQL-native cosine similarity queries (`<=>`) directly against 3072-dimensional service embeddings.
+* **Three Gemini AI Models**:
+  1. **Multimodal Audio (`gemini-flash`)**: Transcribes incoming client voicemails (WAV/MP3) directly into clean text without third-party speech-to-text tools.
+  2. **Dense Vector Embeddings (`gemini-embedding-001`)**: Converts service descriptions and caller inquiries into 3072-dimensional vectors for semantic cosine retrieval in `pgvector`.
+  3. **Structured JSON Extraction (`gemini-flash`)**: Extracts caller contact info, urgency level, notes, and ambiguity flags into strict JSON schemas.
+* **Confidence Engine**: Rather than asking the LLM to rate itself, confidence is calculated deterministically in Python—starting from the vector similarity score and docking points for missing contact info or conflicting requests.
+* **Trade-offs / Scope**: Kept the architecture clean and self-contained as a unified FastAPI + PostgreSQL setup rather than over-engineering with unnecessary microservices, external message queues, or third-party vector SaaS vendors. This met 100% of the assignment requirements with zero excess operational overhead.
 
 ---
 
-### 2. Which Transcript Gave the Most Trouble and Why?
-**Transcript 3 (Audit Hearsay vs. CFO & Budget)** was the most challenging:
-- *The Challenge*: The caller begins with *"I think I need the audit protection kind of package, my friend mentioned that"*, before pivoting to *"what I might really need is somebody to just run the finance side... tell me if I'm profitable"* and concluding with *"I don't have a huge budget"*. Naive keyword matchers or single-pass vector searches get tricked by the prominent mention of "audit", ignoring that it was third-party hearsay.
-- *The Solution*: In our prompt engineering, we introduced an explicit **Hearsay vs. Real Need Disambiguation Rule**. The system correctly classifies the primary need as **Advisory & Fractional CFO** / **Bookkeeping**, while outputting discrete ambiguity flags (`CONFLICTING_SERVICE_REQUEST` and `BUDGET_MISMATCH`) and automatically discounting the confidence score to $44\%$, properly routing it to a partner for triage.
+### **2. Which Transcript Gave the Most Trouble and Why?**
+**Transcript 3**. The caller mentions their friend recommended an *"audit package"*, but their actual operational need is cash flow and profitability advice on a tight budget. A basic keyword search would wrongly match Audit Support. I added a rule to ignore third-party hearsay and focus on the caller’s actual business pain (*Advisory / Fractional CFO* + *Bookkeeping*), plus a budget conflict check that lowers the confidence score to **36%** to trigger human review.
 
 ---
 
-### 3. What to Change Before Real Client Data
-Before deploying with live client data at a professional CPA firm like Meridian:
-1. **PII Masking & Privacy Tokenization**: Client voice notes contain sensitive identifiers (SSNs, EINs, bank accounts, personal phone numbers). We would implement a client-side or gateway PII scrubbing layer (e.g., Microsoft Presidio) to tokenize PII before transmitting transcripts to third-party LLM providers.
-2. **SOC 2 & HIPAA-Compliant Data Retention**: Enforce role-based access control (RBAC), end-to-end encryption at rest (pgcrypto/AES-256), and immutable audit logs tracking who viewed or edited each intake.
+### **3. First Thing to Change Before Real Client Data**
+**Security and client privacy.** Tax voicemails contain personal phone numbers and confidential financial details. Before processing live data, I would add user authentication with role-based access control (RBAC), database encryption at rest, and an enterprise zero-data-retention agreement with the LLM provider so client financial info is never stored or used for model training.
 
 ---
 
-### 4. Assumptions Made vs. What We Would Have Asked
-- *Assumptions*: We assumed transcripts originate from voice-to-text without caller ID metadata attached (prompting us to flag transcripts missing phone numbers as incomplete). We also assumed a single intake can be mapped to primary and secondary services for cross-department handoffs.
-- *What We Would Have Asked*:
-  1. Does Meridian's telephony system provide automatic caller ID / CRM customer record links to resolve anonymous transcripts?
-  2. For multi-service matches (e.g., LLC Tax Prep + Payroll in Transcript 1), should the system spawn linked sub-tickets across separate practice departments?
+### **4. Assumptions Made vs. What I Would Have Asked**
+* **Assumptions**: Callers often need multiple services at once (e.g., Business Tax Prep + Payroll), and staff cannot approve an intake without at least a client name and a working phone number or email.
+* **Questions I'd ask**:
+  1. What is the expected response SLA for high-urgency statutory deadlines?
+  2. Should approved intakes automatically export into practice management tools (Karbon, Canopy, QuickBooks)?
+  3. How should existing client records or duplicate inquiries be matched?
 
 ---
 
-### 5. What We Would Build with a Full Week
-1. **AI-Drafted Clarification Emails**: One-click generation of personalized, courteous draft emails for flagged intakes (e.g., asking Transcript 2 for their phone number and entity name).
-2. **Audio Upload & Streaming Transcription**: Direct audio file upload (MP3/WAV) using Gemini's native audio processing or local Whisper to eliminate manual transcription.
-3. **Active Learning Feedback Loop**: An intake coordinator correction UI that logs human adjustments to retune catalog embeddings and few-shot calibration dynamically.
+### **5. What I'd Build with a Full Week**
+1. **Practice Management Sync**: Push approved intakes directly into tools like Karbon, Canopy, or QuickBooks Online.
+2. **One-Click Follow-Up Drafts**: A button to instantly generate a quick email or SMS draft asking callers for missing details (like Transcript 2, who forgot to leave a phone number).
+3. **Live Phone Line Hook**: Connect a Twilio phone number so incoming client voicemails drop directly into the triage queue automatically.
+
