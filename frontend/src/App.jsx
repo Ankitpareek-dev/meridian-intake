@@ -4,6 +4,8 @@ import IntakeQueue from './components/IntakeQueue';
 import IntakeDetail from './components/IntakeDetail';
 import NewIntakeModal from './components/NewIntakeModal';
 
+const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+
 export default function App() {
   const [intakes, setIntakes] = useState([]);
   const [services, setServices] = useState([]);
@@ -32,7 +34,7 @@ export default function App() {
 
   // Fetch Services Catalog
   useEffect(() => {
-    fetch('/api/services')
+    fetch(`${API_BASE}/api/services`)
       .then(res => res.json())
       .then(data => setServices(data))
       .catch(err => console.error('Error fetching services:', err));
@@ -41,7 +43,7 @@ export default function App() {
   // Fetch Intakes Queue
   const fetchIntakes = () => {
     setIsLoadingList(true);
-    let url = '/api/intakes?';
+    let url = `${API_BASE}/api/intakes?`;
     if (tabFilter === 'FLAGGED') url += 'tab=REVIEW_NEEDED&';
     else if (tabFilter === 'CLEAN') url += 'tab=AWAITING_CONFIRMATION&';
     else if (tabFilter === 'APPROVED') url += 'tab=APPROVED&';
@@ -76,7 +78,7 @@ export default function App() {
       return;
     }
     setIsLoadingDetail(true);
-    fetch(`/api/intakes/${selectedIntakeId}`)
+    fetch(`${API_BASE}/api/intakes/${selectedIntakeId}`)
       .then(res => res.json())
       .then(data => {
         setSelectedIntake(data);
@@ -92,7 +94,7 @@ export default function App() {
   const handleSeedSamples = async () => {
     setIsSeeding(true);
     try {
-      await fetch('/api/seed', { method: 'POST' });
+      await fetch(`${API_BASE}/api/seed`, { method: 'POST' });
       fetchIntakes();
     } catch (err) {
       console.error('Error seeding transcripts:', err);
@@ -105,7 +107,7 @@ export default function App() {
   const handleProcessIntake = async (transcriptText) => {
     setIsSubmitting(true);
     try {
-      const res = await fetch('/api/intakes/process', {
+      const res = await fetch(`${API_BASE}/api/intakes/process`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ transcript: transcriptText })
@@ -133,7 +135,7 @@ export default function App() {
       const formData = new FormData();
       formData.append('file', audioFile);
 
-      const res = await fetch('/api/intakes/process-audio', {
+      const res = await fetch(`${API_BASE}/api/intakes/process-audio`, {
         method: 'POST',
         body: formData
       });
@@ -157,7 +159,7 @@ export default function App() {
   const handleUpdateStatus = async (intakeId, newStatus) => {
     setIsUpdatingStatus(true);
     try {
-      const res = await fetch(`/api/intakes/${intakeId}`, {
+      const res = await fetch(`${API_BASE}/api/intakes/${intakeId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus })
@@ -179,7 +181,7 @@ export default function App() {
   // Delete Intake
   const handleDeleteIntake = async (intakeId) => {
     try {
-      await fetch(`/api/intakes/${intakeId}`, { method: 'DELETE' });
+      await fetch(`${API_BASE}/api/intakes/${intakeId}`, { method: 'DELETE' });
       // Optimistically update list
       setIntakes(prev => {
         const remaining = prev.filter(item => item.id !== intakeId);
@@ -198,7 +200,7 @@ export default function App() {
   // Add/Update Service Match on Intake
   const handleAddService = async (intakeId, serviceId, matchType, rationale) => {
     try {
-      const res = await fetch(`/api/intakes/${intakeId}/services`, {
+      const res = await fetch(`${API_BASE}/api/intakes/${intakeId}/services`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -218,7 +220,7 @@ export default function App() {
   // Remove Service Match from Intake
   const handleRemoveService = async (intakeId, serviceId) => {
     try {
-      const res = await fetch(`/api/intakes/${intakeId}/services/${serviceId}`, {
+      const res = await fetch(`${API_BASE}/api/intakes/${intakeId}/services/${serviceId}`, {
         method: 'DELETE'
       });
       const data = await res.json();
